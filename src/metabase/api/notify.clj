@@ -1,15 +1,17 @@
 (ns metabase.api.notify
   "/api/notify/* endpoints which receive inbound etl server notifications."
   (:require [compojure.core :refer [POST]]
+            [metabase
+             [driver :as driver]
+             [sync-database :as sync-database]]
             [metabase.api.common :as api]
             [metabase.models
              [database :refer [Database]]
              [table :refer [Table]]]
-            [metabase.sync-database :as sync-database]
-            [metabase.sync-database.cached-values :as cached-values]
-            [metabase.sync-database.analyze :as analyze]
-            [metabase.driver :as driver]
-            [metabase.sync-database.classify :as classify]))
+            [metabase.sync-database
+             [analyze :as analyze]
+             [cached-values :as cached-values]
+             [classify :as classify]]))
 
 (defn- future-sync-and-analyze-table [driver table]
   (future (sync-database/sync-table! table)
@@ -36,6 +38,5 @@
                    (future-sync-and-analyze-table driver table))
       :else (future-sync-and-analyze-database driver database)))
   {:success true})
-
 
 (api/define-routes)

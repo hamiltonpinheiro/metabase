@@ -21,7 +21,8 @@
 (u/strict-extend (class TableFingerprint)
   models/IModel
   (merge models/IModelDefaults
-         {:types          (constantly {})})
+         {:types          (constantly {})
+          :properties     (constantly {:timestamped? true})})
   i/IObjectPermissions
   (merge i/IObjectPermissionsDefaults
          {:perms-objects-set  perms-objects-set

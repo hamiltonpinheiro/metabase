@@ -12,8 +12,18 @@
              [field-fingerprint :refer [FieldFingerprint]]
              [table :as table]
              [table-fingerprint :refer [TableFingerprint]]]
+            [metabase.db.metadata-queries :as metadata-queries]
             [metabase.sync-database.classify :as classify]
             [toucan.db :as db]))
+
+(defn- table-row-count
+  "Determine the count of rows in TABLE by running a simple structured MBQL query."
+  [table]
+  {:pre [(integer? (:id table))]}
+  (try
+    (metadata-queries/table-row-count table)
+    (catch Throwable e
+      (log/error (u/format-color 'red "Unable to determine row count for '%s': %s\n%s" (:name table) (.getMessage e) (u/pprint-to-str (u/filtered-stacktrace e)))))))
 
 (defn- values-are-valid-json?
   "`true` if at every item in VALUES is `nil` or a valid string-encoded JSON dictionary or array, and at least one of those is non-nil."
@@ -86,8 +96,8 @@
                      :field_percent_urls      (percent-valid-urls values)
                      :field_percent_json      (if (values-are-valid-json? values) 100 0)
                      :field_percent_email     (if (values-are-valid-emails? values) 100 0)
-                     :field_avg-length        (field-avg-length values)
-                     :feild_id                field-id
+                     :field_avg_length        (field-avg-length values)
+                     :field_id                field-id
                      :table_id                (:id table)
                      :name                    (:name field)
                      :qualified_name          (field/qualified-name field)
@@ -99,7 +109,9 @@
   "store a sequence of fingerprints"
   [fingerprints]
   (doseq [fingerprint fingerprints]
-    (let [fingerprint (update fingerprint :base_type u/keyword->qualified-name)] 
+    (let [fingerprint (-> fingerprint
+                          (update :base_type u/keyword->qualified-name)
+                          (update :visibility_type u/keyword->qualified-name))]
          (log/debug (u/format-color 'cyan "saving fingerprint for field: %s (%s):%s"
                       (:field_id fingerprint) (:name fingerprint) (keys fingerprint)))
          (or (db/update! FieldFingerprint {:where [:= :field_id (:field_id fingerprint)]
@@ -125,8 +137,10 @@
   "Analyze the data shape for a single `Table`."
   [driver {table-id :id, :as table}]
   (let [fields (table/fields table)
+        rows (table-row-count table)
         field-fingerprints (map #(field-fingerprint driver table %) fields)
         table-fingerprint (table-fingerprint table)]
+    (db/update! table/Table table-id :rows rows)
     (save-field-fingerprints! field-fingerprints)
     (save-table-fingerprint! table-fingerprint)))
 

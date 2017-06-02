@@ -3,6 +3,7 @@
             [metabase.models
              [field :refer :all]
              [field-values :refer :all]]
+            [metabase.sync-database.infer-special-type :refer [infer-field-special-type]]
             [metabase.sync-database.classify :refer :all]
             [metabase.test.util :as tu]))
 

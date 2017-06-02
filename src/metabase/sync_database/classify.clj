@@ -1,6 +1,9 @@
 (ns metabase.sync-database.classify
   (:require [clojure.math.numeric-tower :as math]
             [clojure.tools.logging :as log]
+            [metabase
+             [driver :as driver]
+             [util :as u]]
             [metabase.models
              [field :as field]
              [field-fingerprint :refer [FieldFingerprint]]
@@ -10,7 +13,6 @@
             [metabase.sync-database
              [infer-special-type :as infer-special-type]
              [interface :as i]]
-            [metabase.util :as u]
             [schema.core :as schema]
             [toucan.db :as db]))
 
@@ -25,24 +27,14 @@
 (def ^:private ^:const ^Integer average-length-no-preview-threshold
   "Fields whose values' average length is greater than this amount should be marked as `preview_display = false`."
   50)
-;; save point: trying to remove driver references from here.
-#_(defn test-for-cardinality? trying to move this into cached-values
-  "Should FIELD should be tested for cardinality?"
-  [fingerprint field-stats #_is-new?]
-  (or (field-values/field-should-have-field-values? (assoc fingerprint :special_type (:special_type field-stats)))
-      (and (nil? (:special_type fingerprint))
-           #_is-new? ;; do we actually want to test for this here?
-           (not (isa? (:base_type fingerprint) :type/DateTime))
-           (not (isa? (:base_type fingerprint) :type/Collection))
-           (not (= (:base_type fingerprint) :type/*)))))
 
 (defn- test:category-type
-  "When no initial guess of the special type, based on the fields name, was found 
+  "When no initial guess of the special type, based on the fields name, was found
    and the field has less than `low-cardinality-threshold`
  default to :type/Category"
   ;; this used to only apply to new fields and that was removed in refactor, does that break things
-  [{:keys [base_type visibility_type name is-fk? is-pk?] :as fingerprint} {:keys [special-type] :as field-stats}]
-  (if (and (not is-fk?) (not is-pk? )
+  [{:keys [base_type visibility_type name is_fk is_pk] :as fingerprint} {:keys [special-type] :as field-stats}]
+  (if (and (not is_fk) (not is_pk )
            (nil? (:special-type field-stats))
            (< 0 (:cardinality fingerprint) low-cardinality-threshold)
            (field-values/field-should-have-field-values? {:base_type base_type
@@ -85,7 +77,6 @@
           (log/debug (u/format-color 'green "Field '%s' is %d%% URLs. Marking it as a URL." (:qualified-name fingerprint) (int (math/round (* 100 percent-urls)))))
           (assoc field-stats :special-type :url))))))
 
-
 (defn- test:json-special-type
   "Mark FIELD as `:json` if it's textual, doesn't already have a special type, the majority of it's values are non-nil, and all of its non-nil values
    are valid serialized JSON dictionaries or arrays."
@@ -127,14 +118,14 @@
 (defn- test:primary-key
   "if a field is a primary key, it's special type must be :type/PK"
   [fingerprint field-stats]
-  (if (:is-pk? fingerprint)
+  (if (:is_pk fingerprint)
     (assoc field-stats :special-type :type/PK)
     field-stats))
 
 (defn- test:foreign-key
   "if a field is a foreign key, it's special type must be :type/FK"
   [fingerprint field-stats]
-  (if (:is-fk? fingerprint)
+  (if (:is_fk fingerprint)
     (assoc field-stats :special-type :type/FK)
     field-stats))
 
@@ -157,7 +148,6 @@
   {:row_count (:row_count table-fingerprint)
    :fields (map #(test:new-field % {:id (:id %)}) field-fingerprints)})
 
-
 (defn classify-and-save-table!
   "Analyze the data shape for a single `Table`."
   [driver {table-id :id, :as table}]
@@ -173,11 +163,12 @@
             ;; if a field marked `preview-display` as false then set the visibility
             ;; type to `:details-only` (see models.field/visibility-types)
             :visibility_type (when (false? preview-display) :details-only)
-            :special_type    special-type)))
-      (db/update-where! field/Field {:table_id        table-id
-                                     :visibility_type [:not= "retired"]}
-      :last_analyzed (u/new-sql-timestamp))
-      table-stats)))
+            :special_type    special-type
+            #_:last_analyzed   #_(u/new-sql-timestamp)))))
+
+    (db/update-where! field/Field {:table_id        table-id
+                                   :visibility_type [:not= "retired"]}
+      :last_analyzed (u/new-sql-timestamp))))
 
 (defn classify-tables!
   "classify and save all previously saved fingerprints for tables in this database"
@@ -188,7 +179,7 @@
         finished-tables-count (atom 0)]
     (doseq [{table-name :name, :as table} tables]
       (try
-        (classify-table! driver table)
+        (classify-and-save-table! driver table)
         (catch Throwable t
           (log/error "Unexpected error analyzing table" t))
         (finally
