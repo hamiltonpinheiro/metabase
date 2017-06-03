@@ -19,12 +19,14 @@
              [driver-specific :as driver-specific]
              [expand-macros :as expand-macros]
              [expand-resolve :as expand-resolve]
+             [fetch-source-query :as fetch-source-query]
              [format-rows :as format-rows]
              [limit :as limit]
              [log :as log-query]
              [mbql-to-native :as mbql-to-native]
              [parameters :as parameters]
              [permissions :as perms]
+             [record-results-metadata :as record-results-metadata]
              [resolve-driver :as resolve-driver]]
             [metabase.query-processor.util :as qputil]
             [metabase.util.schema :as su]
@@ -85,6 +87,7 @@
       cumulative-ags/handle-cumulative-aggregations
       implicit-clauses/add-implicit-clauses
       format-rows/format-rows
+      record-results-metadata/record-results-metadata!
       expand-resolve/expand-resolve                    ; ▲▲▲ QUERY EXPANSION POINT  ▲▲▲ All functions *above* will see EXPANDED query during PRE-PROCESSING
       row-count-and-status/add-row-count-and-status    ; ▼▼▼ RESULTS WRAPPING POINT ▼▼▼ All functions *below* will see results WRAPPED in `:data` during POST-PROCESSING
       parameters/substitute-parameters
@@ -92,6 +95,7 @@
       driver-specific/process-query-in-context         ; (drivers can inject custom middleware if they implement IDriver's `process-query-in-context`)
       add-settings/add-settings
       resolve-driver/resolve-driver                    ; ▲▲▲ DRIVER RESOLUTION POINT ▲▲▲ All functions *above* will have access to the driver during PRE- *and* POST-PROCESSING
+      fetch-source-query/fetch-source-query
       log-query/log-initial-query
       cache/maybe-return-cached-results
       catch-exceptions/catch-exceptions))
@@ -118,7 +122,8 @@
   (->> identity
        expand-resolve/expand-resolve
        parameters/substitute-parameters
-       expand-macros/expand-macros))
+       expand-macros/expand-macros
+       fetch-source-query/fetch-source-query))
 ;; ▲▲▲ This only does PRE-PROCESSING, so it happens from bottom to top, eventually returning the preprocessed query instead of running it
 
 
